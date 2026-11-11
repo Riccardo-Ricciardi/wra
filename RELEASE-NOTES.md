@@ -2,6 +2,9 @@
 
 First public release of **WRA — Workspace Relay for Agents**, previously developed as `cc-remote`.
 
+**Supported platform: Windows 10/11 (x64/ARM64).** Claude Code is the only supported agent engine.
+macOS, Linux, Codex and other agents are not supported in 1.0.
+
 ## What it is
 
 WRA drives the real Claude Code TUI on your own machine and puts a browser, a phone and an MCP

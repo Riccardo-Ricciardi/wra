@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fefefe" media="(prefers-color-scheme: light)">
+  <meta name="description" content="Le conversazioni di Claude Code, dal browser e dal telefono.">
+  <title>WRA</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/geist-mono.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/vendor/xterm/css/xterm.css">
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Una testata sola, in alto, in ogni schermata. Sotto non c'è una colonna laterale: l'elenco
+         delle conversazioni è una **pagina**, e prende tutta la larghezza. -->
+    <header class="nav">
+      <button class="brand" id="brand" type="button" title="torna alle conversazioni" aria-label="torna alle conversazioni"><span class="mark" id="brand-mark"></span>WRA</button>
+      <nav class="nav-tabs" id="nav-tabs" aria-label="sezioni"></nav>
+      <span class="grow"></span>
+      <button class="nav-search" id="nav-search" type="button" aria-label="cerca fra conversazioni e progetti">
+        <span id="search-icon" aria-hidden="true"></span>
+        <span class="label">Cerca</span>
+        <span class="keys only-wide">Ctrl K</span>
+      </button>
+      <span class="nav-conn" id="conn-wrap" data-state="off">
+        <span class="dot" id="conn"></span>
+        <span id="conn-text">non connesso</span>
+      </span>
+      <button id="theme" class="icon-btn" type="button" aria-label="tema"></button>
+      <button id="nav-more" class="icon-btn" type="button" aria-label="impostazioni e amministrazione" aria-haspopup="menu"></button>
+    </header>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <main id="main">
+      <!-- Le quattro pagine. Se ne vede una per volta, e la conversazione aperta le sostituisce
+           tutte: è un'altra cosa, e va vista da sola. -->
+      <section id="page-conversations" class="page" aria-label="conversazioni" hidden>
+        <div class="page-body" id="conversations-body"></div>
+      </section>
+
+      <section id="page-projects" class="page" aria-label="progetti" hidden>
+        <div class="page-body" id="projects-body"></div>
+      </section>
+
+      <section id="page-activity" class="page" aria-label="attività" hidden>
+        <div class="page-body" id="activity-body"></div>
+      </section>
+
+      <section id="pane-admin" class="page" aria-label="impostazioni e amministrazione" hidden></section>
+
+      <section id="page-session" class="session" aria-label="conversazione" hidden>
+        <header class="session-head">
+          <button id="conv-back" class="icon-btn" type="button" aria-label="torna alle conversazioni"></button>
+          <div class="head">
+            <h1 id="conv-name">WRA</h1>
+            <div class="sub">
+              <span id="conv-project">nessuna conversazione aperta</span>
+              <span id="conv-state"></span>
+              <span class="chips" id="conv-chips"></span>
+            </div>
+          </div>
+          <!-- Il modo di autorizzare sta **sempre** nello stesso posto, in testata: è la cosa che si
+               guarda per sapere cosa può fare l'agente, e una cosa che si guarda non può stare in un
+               menu. Da qui si apre la schermata dove si cambia. -->
+          <span id="busy" class="chip accent" hidden>sta lavorando</span>
+          <span class="grow"></span>
+          <button id="conv-auth" class="mode-btn" type="button" hidden></button>
+          <button id="conv-star" class="icon-btn" type="button" aria-label="fissa in alto" hidden></button>
+          <div class="seg tabs-seg" role="tablist" aria-label="vista">
+            <button role="tab" id="tab-chat" aria-selected="true" type="button">Chat</button>
+            <button role="tab" id="tab-terminal" aria-selected="false" type="button">Terminale</button>
+          </div>
+          <button id="conv-menu-btn" class="icon-btn" type="button" aria-label="opzioni della conversazione" aria-expanded="false" aria-haspopup="menu"></button>
+        </header>
+
+        <!-- La dichiarazione, quando serve: compare **solo** per gli stati che vanno visti per forza
+             — l'agente che non chiede mai, e quello che non chiede mai *ed è* pilotabile da fuori.
+             Negli altri casi non c'è, perché una striscia sempre accesa è una striscia che si smette
+             di leggere. -->
+        <div id="auth-bar" class="auth-bar" hidden></div>
+
+        <section id="pane-chat" class="pane-chat" role="tabpanel" aria-label="chat">
+          <div class="viewport" id="viewport">
+            <ol class="feed" id="messages" aria-live="polite" aria-relevant="additions text"></ol>
+          </div>
+          <div class="approvals" id="approvals"></div>
+          <div class="composer-wrap" id="composer-wrap">
+            <form class="composer" id="composer">
+              <!-- La riga «Invio invia · Shift+Invio va a capo» stava lì sotto, sempre: una
+                   spiegazione che si legge una volta e si paga a ogni visita. È passata nel
+                   `title`, che è dove si va a cercare quando non si sa. -->
+              <textarea id="composer-text" rows="1" placeholder="Scrivi all'agente…"
+                title="Invio invia · Shift+Invio va a capo" aria-label="messaggio per l'agente"></textarea>
+              <button class="send" id="send" type="submit" aria-label="invia"></button>
+            </form>
+          </div>
+        </section>
+
+        <section id="pane-auth" class="page" aria-label="permessi e accesso di questa conversazione" hidden></section>
+
+        <section id="pane-term" class="pane-term" role="tabpanel" aria-label="terminale" hidden>
+          <p class="term-note" id="term-note" hidden></p>
+          <div id="screen"></div>
+        </section>
+      </section>
+    </main>
+
+    <!-- Le azioni su più conversazioni: galleggia sopra il contenuto, perché con l'elenco che è una
+         pagina intera una barra in fondo sarebbe fuori dallo schermo proprio quando serve. -->
+    <div id="selectbar" class="selectbar" role="group" aria-label="azioni sulle conversazioni selezionate" hidden></div>
+  </div>
+
+  <div id="menu-layer"></div>
+  <div id="dialog-layer"></div>
+  <div id="toast" hidden role="status" aria-live="polite"></div>
+
+  <div class="gate" id="gate" hidden>
+    <form id="gate-form">
+      <span class="brand"><span class="mark" id="gate-mark"></span>WRA</span>
+      <h1>Entra</h1>
+      <p>Incolla il token stampato da <code>wra start</code> — sta in <code>~/.cc-remote/token</code>.</p>
+      <input id="token" type="password" autocomplete="current-password" placeholder="token" required aria-label="token di WRA">
+      <button class="btn btn-primary" type="submit">entra</button>
+      <p class="err" id="gate-err"></p>
+    </form>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

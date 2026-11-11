@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+.env
+.DS_Store
+Thumbs.db
+
+# artefatti di lavoro in giro per la cartella: scatti e file di appoggio, non parti del progetto.
+# (Le schermate vere stanno in docs/screenshots/ e si committano.)
+/.hero__image
+/01-home-desktop.png
+
+# build info di TypeScript
+*.tsbuildinfo

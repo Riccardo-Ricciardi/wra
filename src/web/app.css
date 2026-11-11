@@ -1,0 +1,1330 @@
+/* cc-remote — interfaccia.
+   ─────────────────────────────────────────────────────────────────────────────
+   Un solo foglio, con un ordine fisso: prima i *font* e i *token* (colore, tipo, spazio, raggio,
+   ombra, movimento), poi i componenti che li usano. Nessun valore di colore o di misura scritto
+   dentro un componente: se serve un colore nuovo, è un token nuovo — altrimenti il tema scuro
+   diventa una variante approssimata di quello chiaro, che è il modo in cui queste interfacce
+   invecchiano male.
+
+   Direzione: quella di FreeLLMAPI — neutro puro, il **nero** come unico accento forte, le schede
+   con un bordo sottile invece che con un'ombra, molto spazio fra le cose, e la gerarchia affidata
+   alla dimensione e al peso del testo. La pagina si legge dall'alto in basso: un titolo, una riga
+   che spiega cosa c'è, poi il contenuto. Quello che si usa di rado non sta in vista.
+
+   Due voci, e ognuna ha un mestiere: il **sans** per tutto quello che si legge, il **monospaziato**
+   per i dati — conteggi, date, id, percorsi, nomi delle modalità. Non è decorazione: è la voce
+   del prodotto, che è un terminale. */
+
+/* ── Font ──────────────────────────────────────────────────────────────────── */
+/* Geist e Geist Mono, serviti da questa macchina (`fonts/` fa parte della shell del service
+   worker). Nessun CDN: la pagina deve aprirsi identica anche dal telefono, in treno, senza rete —
+   ed è il motivo per cui esiste. `font-display: swap` perché un font non deve mai nascondere il
+   testo che c'è già. */
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist-mono.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── Token ─────────────────────────────────────────────────────────────────── */
+/* Il linguaggio è quello di FreeLLMAPI: neutro puro, nessuna tinta di fondo, il **nero** come
+   unico accento forte e i dati come unica nota di colore. Due voci tipografiche, Geist e Geist
+   Mono, servite da questa macchina: nessuna rete esterna, quindi l'app resta utilizzabile anche
+   quando la rete non c'è — che è il caso per cui esiste. */
+:root {
+  /* colore — chiaro */
+  --bg: oklch(99.5% 0 0);
+  --surface: oklch(100% 0 0);
+  --raised: oklch(97% 0 0);
+  --sunken: oklch(94% 0 0);
+  --fg: oklch(18% 0 0);
+  --fg-soft: oklch(34% 0 0);
+  /* `--muted` e `--faint` sono tarati sul **fondo su cui stanno davvero**, non su `--surface`:
+     misurati sui nodi resi (tools/ui-probe.mjs) il conteggio di un filtro stava a 4.28 e quello
+     di un progetto a 4.49 — sotto 4.5 mentre il controllo sui token passava. Il neutro puro ha la
+     stessa luminanza del grigio appena tinto di prima, quindi le due soglie restano quelle. */
+  --muted: oklch(46% 0 0);
+  --faint: oklch(53% 0 0);
+  --line: oklch(92% 0 0);
+  --line-strong: oklch(84% 0 0);
+  /* L'accento forte è il **nero**, come nel riferimento: pulsanti primari, selezione, fuoco. Il
+     blu resta in vita, ma con un mestiere più stretto — i collegamenti e l'esposizione remota —
+     perché era l'accento di tutto e colorava di sé anche quello che non era un'azione. */
+  --accent: oklch(22% 0 0);
+  --accent-fg: oklch(98% 0 0);
+  --accent-soft: oklch(95.5% 0 0);
+  --accent-line: oklch(88% 0 0);
+  --link: oklch(50% 0.13 250);
+  --ok: oklch(55% 0.13 155);
+  --ok-soft: oklch(96% 0.03 155);
+  --warn: oklch(60% 0.14 70);
+  --warn-soft: oklch(96.5% 0.04 80);
+  /* L'ambra come **testo**, che è un'altra cosa dall'ambra come segno: un pallino o un bordo si
+     vedono anche a 3:1, una parola da 11px no. `--warn` è tarata per il primo mestiere, e usarla
+     per il secondo dava 3.53:1 su una riga tinta — cioè sotto la soglia, su una parola che dice
+     quanto è pericolosa la conversazione. */
+  --warn-ink: oklch(47% 0.13 70);
+  --danger: oklch(53% 0.19 25);
+  --danger-soft: oklch(96% 0.03 25);
+
+  /* I tre modi di autorizzare, come **vocabolario** e non come decorazione: la stessa tinta vale
+     nella riga dell'elenco, nella testata e nel pannello, così un modo si riconosce prima di
+     leggerne il nome. `normale` non ha una tinta sua — è l'assenza di contrassegno, ed è il punto:
+     il default deve sembrare il default. */
+  --auto: var(--warn);
+  --auto-soft: var(--warn-soft);
+  --auto-ink: var(--warn-ink);
+  --auto-bg: color-mix(in oklab, var(--warn) 7%, var(--bg));
+  --bypass: var(--danger);
+  --bypass-soft: var(--danger-soft);
+  --bypass-bg: color-mix(in oklab, var(--danger) 8%, var(--bg));
+  /* L'esposizione a ChatGPT è un **asse diverso** da cosa può fare l'agente: chi può parlarci, non
+     cosa può fare. Quindi non condivide la forma né la tinta dei modi — è il blu dei collegamenti,
+     ed è discreta. */
+  --reach: var(--link);
+  --reach-soft: oklch(96% 0.025 250);
+  /* E una quarta cosa, che non è una modalità ma un **buco di conoscenza**: una conversazione in
+     una modalità di Claude Code che questa schermata non sa descrivere (`acceptEdits` e compagne).
+     Ha una tinta sua — ambra, come l'automatico, ma con l'avviso — perché non deve sembrare né
+     «normale» né «automatico»: non sappiamo quale delle due sia. */
+  --other: var(--warn);
+  --other-soft: var(--warn-soft);
+  --other-ink: var(--warn-ink);
+  --other-bg: color-mix(in oklab, var(--warn) 9%, var(--bg));
+
+  /* tipo — due voci e un mestiere ciascuna: Geist per tutto quello che si legge, Geist Mono per i
+     dati (conteggi, date, id, percorsi, nomi delle modalità). Le misure sono una scala fissa e non
+     fluida: questa è un'interfaccia di prodotto, si guarda sempre alla stessa densità. */
+  --ui: "Geist", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+  --mono: "Geist Mono", "Cascadia Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  --fs-2xs: 0.6875rem;  /* 11 — solo etichette di stato e contatori */
+  --fs-xs: 0.75rem;     /* 12 — metadati: date, percorsi, id */
+  --fs-sm: 0.8125rem;   /* 13 — controlli, chip, righe secondarie */
+  --fs-md: 0.875rem;    /* 14 — righe dell'elenco, voci di menu */
+  --fs-base: 0.9375rem; /* 15 — testo corrente, conversazione */
+  --fs-lg: 1.0625rem;   /* 17 — titolo di un blocco */
+  --fs-xl: 1.25rem;     /* 20 — titolo di una scheda */
+  --fs-2xl: 1.5rem;     /* 24 — titolo di una schermata */
+  --fs-3xl: 1.875rem;   /* 30 — titolo di pagina: è la voce più alta dell'app, e non ce n'è una più alta */
+  --lh-tight: 1.25;
+  --lh-base: 1.6;
+
+  /* spazio — una scala sola, di quattro in quattro */
+  --s1: 0.25rem;
+  --s2: 0.5rem;
+  --s3: 0.75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+  --s7: 3rem;
+
+  /* forma — la scala del riferimento: 4 · 6 · 8 · 12 · 16, e 22 per le schede. `--r-2xl` esiste
+     perché una scheda e un pulsante non sono la stessa cosa e non devono avere lo stesso angolo. */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-2xl: 22px;
+  --r-pill: 999px;
+  /* Una sola ombra, e solo dove serve davvero: nel riferimento le schede non ne hanno — hanno un
+     bordo. L'ombra resta per quello che **galleggia** sopra la pagina (menu, finestre, avvisi). */
+  --shadow-1: 0 1px 2px oklch(20% 0 0 / 6%), 0 4px 12px oklch(20% 0 0 / 5%);
+  --shadow-2: 0 2px 6px oklch(20% 0 0 / 8%), 0 16px 40px oklch(20% 0 0 / 12%);
+
+  /* movimento */
+  --fast: 120ms;
+  --base: 180ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* impianto */
+  --nav-h: 3.5rem;    /* la testata: una sola, in alto, in ogni schermata */
+  --page-w: 68rem;    /* la larghezza oltre la quale una pagina non si allarga più */
+  --sidebar-w: 18.5rem;
+  --measure: 46rem;
+  --measure-wide: 64rem;
+  --tap: 2.75rem; /* il minimo toccabile: 44px */
+
+  /* I livelli, dal fondo alla cima. Un gradino per **tipo di cosa**, e nessun numero scritto a
+     mano nei componenti: chi aggiunge un menu non deve indovinare un numero, e chi legge sa in che
+     ordine stanno le cose senza cercarle tutte.
+
+       contenuto 0 · guida 2 · testata 3 · velo 30 · cassetto 35 · menu 40 · finestra 50 ·
+       avviso 60 · token 70
+
+     `#toast` sta sopra la finestra: dice cosa è appena successo, e una conferma che finisce sotto
+     il dialogo che l'ha chiesta è una conferma che non si legge. Non ruba clic comunque
+     (`pointer-events: none`). */
+  --z-rail: 2;
+  --z-bar: 3;
+  --z-scrim: 30;
+  --z-drawer: 35;
+  --z-menu: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+  --z-gate: 70;
+}
+
+/* Il tema scuro è un progetto, non un'inversione: è il neutro del riferimento, dove il fondo sta
+   a 13.5 e la superficie a 17.5 — una differenza piccola, che è quello che tiene le schede
+   leggibili senza bordi accesi. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { color-scheme: dark; }
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: oklch(13.5% 0 0);
+    --surface: oklch(17.5% 0 0);
+    --raised: oklch(24% 0 0);
+    --sunken: oklch(11% 0 0);
+    --fg: oklch(98% 0 0);
+    --fg-soft: oklch(88% 0 0);
+    --muted: oklch(68% 0 0);
+    --faint: oklch(62% 0 0);
+    --line: oklch(26% 0 0);
+    --line-strong: oklch(36% 0 0);
+    --accent: oklch(93% 0 0);
+    --accent-fg: oklch(18% 0 0);
+    --accent-soft: oklch(24% 0 0);
+    --accent-line: oklch(38% 0 0);
+    --link: oklch(72% 0.11 250);
+    --reach-soft: oklch(28% 0.035 250);
+    --ok: oklch(76% 0.13 160);
+    --ok-soft: oklch(27% 0.04 160);
+    --warn: oklch(82% 0.13 85);
+    --warn-soft: oklch(28% 0.05 85);
+    --warn-ink: oklch(88% 0.11 85);
+    --danger: oklch(72% 0.16 25);
+    --danger-soft: oklch(28% 0.06 25);
+    --shadow-1: 0 1px 2px oklch(0% 0 0 / 40%), 0 4px 12px oklch(0% 0 0 / 25%);
+    --shadow-2: 0 2px 6px oklch(0% 0 0 / 45%), 0 16px 40px oklch(0% 0 0 / 40%);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: oklch(13.5% 0 0);
+  --surface: oklch(17.5% 0 0);
+  --raised: oklch(24% 0 0);
+  --sunken: oklch(11% 0 0);
+  --fg: oklch(98% 0 0);
+  --fg-soft: oklch(88% 0 0);
+  --muted: oklch(68% 0 0);
+  --faint: oklch(62% 0 0);
+  --line: oklch(26% 0 0);
+  --line-strong: oklch(36% 0 0);
+  --accent: oklch(93% 0 0);
+  --accent-fg: oklch(18% 0 0);
+  --accent-soft: oklch(24% 0 0);
+  --accent-line: oklch(38% 0 0);
+  --link: oklch(72% 0.11 250);
+  --reach-soft: oklch(28% 0.035 250);
+  --ok: oklch(76% 0.13 160);
+  --ok-soft: oklch(27% 0.04 160);
+  --warn: oklch(82% 0.13 85);
+  --warn-soft: oklch(28% 0.05 85);
+  --warn-ink: oklch(88% 0.11 85);
+  --danger: oklch(72% 0.16 25);
+  --danger-soft: oklch(28% 0.06 25);
+  --shadow-1: 0 1px 2px oklch(0% 0 0 / 40%), 0 4px 12px oklch(0% 0 0 / 25%);
+  --shadow-2: 0 2px 6px oklch(0% 0 0 / 45%), 0 16px 40px oklch(0% 0 0 / 40%);
+}
+
+/* ── Base ──────────────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+/* `hidden` deve vincere sui `display` espliciti qui sotto, altrimenti la pagina del token
+   resta sopra tutto e la scheda Chat non si toglie di mezzo. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--ui);
+  font-size: var(--fs-base);
+  line-height: var(--lh-base);
+  overflow: hidden;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; cursor: pointer; }
+h1, h2, h3, p, ol, ul, figure { margin: 0; }
+ol, ul { padding: 0; }
+svg { display: block; flex: none; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+::selection { background: var(--accent-soft); }
+
+/* La barra di scorrimento, discreta e coerente nei due temi */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { height: 10px; width: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border: 3px solid transparent; background-clip: content-box; border-radius: var(--r-pill); }
+*::-webkit-scrollbar-thumb:hover { background-color: var(--faint); background-clip: content-box; }
+
+.visually-hidden {
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px;
+}
+
+/* ── Impalcatura ───────────────────────────────────────────────────────────── */
+/* Una testata sola in alto, e sotto la pagina. Non c'è una colonna laterale: l'elenco delle
+   conversazioni **è** una pagina, e prende tutta la larghezza che ha — che è quello che serve
+   quando le conversazioni sono cinquecento, non una striscia da 296px. */
+#app { display: flex; flex-direction: column; height: 100dvh; }
+#main { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0; }
+
+/* ── Testata di navigazione ────────────────────────────────────────────────── */
+.nav {
+  align-items: center; background: var(--bg); border-bottom: 1px solid var(--line);
+  display: flex; flex: none; gap: var(--s2);
+  min-height: calc(var(--nav-h) + env(safe-area-inset-top, 0px));
+  padding: env(safe-area-inset-top, 0px) var(--s4) 0;
+  position: relative; z-index: var(--z-bar);
+}
+.nav-tabs { display: flex; gap: 2px; margin-left: var(--s4); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.nav-tabs::-webkit-scrollbar { display: none; }
+.nav-tab {
+  border-radius: var(--r-md); color: var(--muted); display: inline-flex; flex: none;
+  font-size: var(--fs-sm); font-weight: 500; gap: var(--s2); padding: var(--s2) var(--s3);
+  white-space: nowrap; transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.nav-tab:hover { background: var(--raised); color: var(--fg); }
+.nav-tab[aria-current="page"] { background: var(--raised); color: var(--fg); font-weight: 600; }
+/* Il numero accanto a una sezione è un dato: sta in monospaziato e non si arrotonda. */
+.nav-tab .n { color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; font-weight: 500; }
+.nav-tab[aria-current="page"] .n { color: var(--muted); }
+
+/* La ricerca non è un campo nella testata: è un **pulsante** che dice che si può cercare, e da
+   dove. Un campo vero in ogni schermata occuperebbe spazio per una cosa che si usa di rado, e
+   Ctrl+K la apre da qualunque punto — che è il modo in cui la si usa davvero. */
+.nav-search {
+  align-items: center; border: 1px solid var(--line); border-radius: var(--r-md);
+  color: var(--muted); display: inline-flex; font-size: var(--fs-sm); gap: var(--s2);
+  height: 2rem; padding: 0 var(--s2) 0 var(--s3);
+  transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.nav-search:hover { background: var(--surface); border-color: var(--line-strong); color: var(--fg); }
+.nav-search .keys { color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); letter-spacing: 0.04em; }
+.nav-conn {
+  align-items: center; color: var(--muted); display: inline-flex; flex: none;
+  font-size: var(--fs-xs); gap: var(--s2); white-space: nowrap;
+}
+.nav-conn[data-state="off"] { color: var(--faint); }
+.nav-conn .dot { background: var(--faint); }
+.nav-conn[data-state="ready"] .dot { background: var(--ok); }
+.nav-conn[data-state="busy"] .dot { background: var(--accent); animation: pulse 1.4s var(--ease) infinite; }
+.nav-conn[data-state="offline"] .dot { background: var(--danger); }
+
+/* ── Pagina ────────────────────────────────────────────────────────────────── */
+.page { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.page-body { margin: 0 auto; max-width: var(--page-w); padding: var(--s6) var(--s5) var(--s7); }
+.page-head { align-items: flex-start; display: flex; flex-wrap: wrap; gap: var(--s3) var(--s4); margin-bottom: var(--s5); }
+.page-head .titles { flex: 1 1 20rem; min-width: 0; }
+.page-head h1 {
+  font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.028em; line-height: 1.15;
+  text-wrap: balance;
+}
+.page-head .lead { color: var(--muted); font-size: var(--fs-md); margin-top: var(--s2); max-width: 56ch; }
+.page-head .acts { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+/* La barra dei comandi di una pagina: la ricerca a sinistra, i filtri a destra. Un filtro che non
+   entra va a capo invece di scorrere — un filtro che non si vede è un filtro che non esiste. */
+.toolbar { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s3); margin-bottom: var(--s4); }
+.toolbar .field { flex: 1 1 16rem; max-width: 24rem; }
+.toolbar .grow { flex: 1 1 auto; }
+.toolbar .count { color: var(--muted); flex: none; font-size: var(--fs-sm); }
+
+/* ── Comandi ───────────────────────────────────────────────────────────────── */
+.icon-btn {
+  align-items: center; border-radius: var(--r-md); color: var(--muted);
+  display: inline-flex; flex: none; height: 2rem; justify-content: center;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+  width: 2rem;
+}
+.icon-btn:hover { background: color-mix(in oklab, var(--fg) 7%, transparent); color: var(--fg); }
+.icon-btn[aria-expanded="true"] { background: var(--accent-soft); color: var(--fg); }
+
+.btn {
+  align-items: center; border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  display: inline-flex; font-size: var(--fs-sm); font-weight: 500; gap: var(--s2);
+  justify-content: center; min-height: 2.25rem; padding: 0 var(--s3);
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+}
+.btn:hover { background: color-mix(in oklab, var(--fg) 5%, transparent); }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.btn-primary:hover { background: color-mix(in oklab, var(--accent) 86%, var(--fg)); }
+.btn-danger { border-color: color-mix(in oklab, var(--danger) 40%, var(--line)); color: var(--danger); }
+.btn-danger:hover { background: var(--danger-soft); }
+/* Un'azione secondaria accanto a una principale, **senza bordo**: così la principale resta l'unica
+   cosa che si vede per prima. Serve dove le azioni sono tante per riga — quattro per copia, due per
+   processo — e quattro pulsanti bordati uguali sono quattro cose da leggere invece di una. */
+.btn-quiet { border-color: transparent; color: var(--muted); }
+.btn-quiet:hover { background: color-mix(in oklab, var(--fg) 6%, transparent); color: var(--fg); }
+.btn:disabled { cursor: default; opacity: 0.5; }
+
+.chip {
+  align-items: center; border: 1px solid var(--line); border-radius: var(--r-pill);
+  color: var(--muted); display: inline-flex; font-size: var(--fs-2xs); font-weight: 600;
+  gap: 0.3rem; letter-spacing: 0.02em; padding: 0.1rem 0.45rem; white-space: nowrap;
+}
+.chip.accent { background: var(--accent-soft); border-color: var(--accent-line); color: var(--fg); }
+.chip.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+
+.dot { border-radius: 50%; flex: none; height: 0.45rem; width: 0.45rem; background: var(--faint); }
+.dot[data-state="ready"] { background: var(--ok); }
+.dot[data-state="starting"] { background: var(--warn); }
+.dot[data-state="busy"] { background: var(--accent); animation: pulse 1.4s var(--ease) infinite; }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+/* Il campo di testo: quello della ricerca e quello delle impostazioni sono lo stesso controllo,
+   perché sono la stessa cosa. */
+.field {
+  align-items: center; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg); display: flex; gap: var(--s2); padding: 0 var(--s2) 0 var(--s3);
+  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.field:focus-within { border-color: var(--fg); box-shadow: 0 0 0 3px color-mix(in oklab, var(--fg) 10%, transparent); }
+.field > svg { color: var(--faint); flex: none; }
+.field input { background: none; border: 0; flex: 1 1 auto; min-width: 0; outline: none; padding: 0.45rem 0; }
+.field input::placeholder { color: var(--muted); }
+.field .icon-btn { height: 1.75rem; width: 1.75rem; }
+
+.link-btn {
+  align-self: flex-start; color: var(--muted); font-size: var(--fs-xs);
+  padding: 0 var(--s1); text-decoration: underline; text-underline-offset: 3px;
+}
+.link-btn:hover { color: var(--fg); }
+.link-btn[aria-pressed="true"] { color: var(--fg); }
+
+/* Il filtro a segmenti: una scatola sola con dentro le scelte, quella accesa in nero. Sostituisce
+   la fila di pillole, che con cinque filtri andava a capo due volte e occupava tre righe per dire
+   una cosa sola. */
+.seg { background: var(--raised); border-radius: var(--r-lg); display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; }
+.seg button {
+  align-items: center; border-radius: calc(var(--r-lg) - 3px); color: var(--muted);
+  display: inline-flex; font-size: var(--fs-sm); font-weight: 500; gap: var(--s1);
+  padding: 0.3rem var(--s3); white-space: nowrap;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.seg button:hover { color: var(--fg); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.seg button .n { font-family: var(--mono); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; opacity: 0.75; }
+.seg button[aria-pressed="true"] .n { opacity: 0.9; }
+/* Un filtro per data è acceso o non c'è: quando c'è si vede, e si toglie da qui. */
+.seg .when { color: var(--fg); }
+
+/* ── Scheda ────────────────────────────────────────────────────────────────── */
+/* Nel riferimento le schede non hanno ombra: hanno un bordo sottile e molto spazio dentro. È la
+   differenza fra una pagina che sembra stampata e una che sembra un pannello di controllo. */
+/* `overflow: hidden` perché la prima riga di un elenco arriva fino all'angolo: senza, la sua tinta
+   al passaggio del mouse sborda dal raggio e la scheda sembra disegnata male. I menu non si
+   tagliano, perché si aprono in `#menu-layer`, fuori da qui. */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-2xl); overflow: hidden; }
+.card + .card { margin-top: var(--s4); }
+.card-head { align-items: baseline; display: flex; flex-wrap: wrap; gap: var(--s3); padding: var(--s4) var(--s5) var(--s3); }
+.card-head h2 { font-size: var(--fs-base); font-weight: 600; letter-spacing: -0.012em; }
+.card-head .meta { color: var(--muted); font-size: var(--fs-sm); margin-left: auto; }
+.card-body { padding: 0 var(--s5) var(--s4); }
+
+/* ── Marchio ───────────────────────────────────────────────────────────────── */
+/* Un segno e un nome: il segno è nero come l'accento, perché è l'unica cosa della testata che non
+   è navigazione. Il resto della testata sono parole. */
+.brand { align-items: center; display: inline-flex; flex: none; font-size: var(--fs-base); font-weight: 650; gap: var(--s2); letter-spacing: -0.02em; }
+button.brand { border-radius: var(--r-md); padding: var(--s1) var(--s2) var(--s1) var(--s1); }
+button.brand:hover .mark { background: color-mix(in oklab, var(--accent) 85%, var(--fg)); }
+.brand .mark {
+  background: var(--accent); border-radius: var(--r-sm); color: var(--accent-fg);
+  display: grid; flex: none; height: 1.6rem; place-items: center; width: 1.6rem;
+}
+
+/* ── Elenco ────────────────────────────────────────────────────────────────── */
+.list { display: flex; flex-direction: column; }
+/* Una riga è un pulsante **e** i suoi comandi: due cose sulla stessa linea, e il bordo è della
+   riga, non del pulsante — altrimenti il menu resta fuori dalla riga e sembra un'altra cosa. */
+.list > li { align-items: center; border-top: 1px solid var(--line); display: flex; gap: var(--s1); padding-right: var(--s4); }
+.list > li:first-child { border-top: 0; }
+.list > li > .row { border-top: 0; }
+/* Il titolo di un gruppo è una riga dell'elenco, ma non è una riga cliccabile: prende il bordo e lo
+   spazio, non il resto. */
+.list > li.group-head { border-top: 1px solid var(--line); display: block; padding: var(--s4) var(--s5) var(--s2); }
+.list > li.group-head:first-child { border-top: 0; padding-top: var(--s2); }
+.list > li:hover { background: var(--raised); }
+.list button.row:hover { background: none; }
+.row .mark-ico { color: var(--faint); display: grid; flex: none; place-items: center; }
+.row .mark-ico.reach { color: var(--reach); }
+.list .row {
+  align-items: center; border-top: 1px solid var(--line); display: flex; gap: var(--s3);
+  min-height: 3.25rem; min-width: 0; padding: var(--s2) var(--s5); text-align: left; width: 100%;
+}
+.list > .row:first-child, .list > *:first-child > .row:first-child { border-top: 0; }
+.list button.row { transition: background var(--fast) var(--ease); }
+.list button.row:hover { background: var(--raised); }
+.list .row .title { flex: 1 1 auto; font-size: var(--fs-md); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.list .row .where {
+  color: var(--muted); flex: 0 1 auto; font-size: var(--fs-xs); max-width: 16rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.list .row .when { color: var(--muted); flex: none; font-family: var(--mono); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.list .row .count { color: var(--muted); flex: none; font-family: var(--mono); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.list .row .pin { color: var(--warn); flex: none; }
+.list .row .reach { color: var(--reach); flex: none; }
+.list .row .menu-btn { height: 1.9rem; opacity: 0; width: 1.9rem; }
+.list .row:hover .menu-btn, .row:focus-within .menu-btn, .row .menu-btn[aria-expanded="true"] { opacity: 1; }
+.list .row[aria-current="true"] { background: var(--raised); }
+.list .row[aria-current="true"] .title { font-weight: 600; }
+.list .row[data-state="offline"] .title { color: var(--muted); }
+
+/* Lo stato di autorizzazione nella riga: una **tinta**, non una targhetta. La riga intera prende
+   il colore del modo, così si vede scorrendo l'elenco senza leggere niente — che è quello che
+   serve con cinquecento righe. `normale` non ne ha: è l'assenza di segno che lo distingue, e se il
+   default avesse una tinta non ci sarebbe più un default.
+   Il colore non è l'unico segno: c'è anche la parola, in monospaziato, perché il daltonismo esiste
+   e il rosso/ambra è la coppia che si perde per prima. */
+.list .row[data-tone="auto"] { background: var(--auto-bg); }
+.list .row[data-tone="auto"]:hover { background: color-mix(in oklab, var(--auto) 13%, var(--bg)); }
+.list .row[data-tone="bypass"] { background: var(--bypass-bg); }
+.list .row[data-tone="bypass"]:hover { background: color-mix(in oklab, var(--bypass) 14%, var(--bg)); }
+.list .row[data-tone="combined"] { background: var(--bypass-soft); }
+.list .row[data-tone="combined"]:hover { background: color-mix(in oklab, var(--bypass) 22%, var(--bg)); }
+.list .row[data-tone="other"] { background: var(--other-bg); }
+.list .row[data-tone="other"]:hover { background: color-mix(in oklab, var(--other) 15%, var(--bg)); }
+.list .row .auth-mark { flex: none; font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: -0.01em; }
+.list .row[data-tone="auto"] .auth-mark { color: var(--auto-ink); }
+.list .row[data-tone="bypass"] .auth-mark { color: var(--bypass); }
+.list .row[data-tone="combined"] .auth-mark { color: var(--bypass); font-weight: 700; }
+.list .row[data-tone="other"] .auth-mark { color: var(--other-ink); font-weight: 700; }
+/* La riga scelta vince sulla tinta del modo: dove sei conta più di cosa può fare l'agente, e la
+   parola resta comunque. */
+.list .row[data-tone][aria-current="true"], .row[data-tone][aria-selected="true"] { background: var(--accent-soft); }
+
+/* Il titolo di un gruppo dentro un elenco: organizza, non grida. */
+.group-head {
+  color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.02em;
+  padding: var(--s4) var(--s5) var(--s2);
+}
+.group-head:first-child { padding-top: var(--s2); }
+
+/* ── Vuoto ─────────────────────────────────────────────────────────────────── */
+/* Non «niente qui»: cosa c'è, e cosa fare. Senza disegni: nel riferimento un vuoto è due righe
+   di testo centrate, ed è abbastanza. */
+.empty { align-items: center; display: flex; flex-direction: column; gap: var(--s2); padding: var(--s7) var(--s5); text-align: center; }
+.empty strong { font-size: var(--fs-base); font-weight: 600; }
+.empty p { color: var(--muted); font-size: var(--fs-sm); max-width: 48ch; }
+.empty .acts { display: flex; flex-wrap: wrap; gap: var(--s2); justify-content: center; margin-top: var(--s2); }
+
+/* ── Progetti ──────────────────────────────────────────────────────────────── */
+/* Il nome di un progetto era in **maiuscolo**: su ventiquattro voci è un urlo, e toglie la forma
+   delle parole — `progetto-01` e `PROGETTO-01` non si distinguono più in fretta, si distinguono
+   più lentamente. Il maiuscolo si usa per una parola, non per una colonna. */
+.project-mark { color: var(--faint); display: grid; flex: none; place-items: center; }
+.list .row[data-hidden="true"] { opacity: 0.6; }
+/* Il progetto che contiene la conversazione aperta si riconosce senza doverlo cercare. */
+.list .row[data-current="true"] .title { font-weight: 600; }
+.list .row .star { color: var(--warn); flex: none; }
+/* Le voci di prova e quelle «da guardare»: **una riga in fondo**, non un blocco in testa. Sessanta
+   righe davanti alle nove vere spingevano i progetti veri sotto la piega, ed erano il difetto più
+   grosso dell'audit. Restano raggiungibili — si mostrano, si nascondono, si dimenticano — senza
+   occupare la schermata di chi ha novanta progetti veri. */
+.note.tests {
+  align-items: baseline; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap;
+  gap: var(--s1) var(--s3); margin-top: var(--s4); max-width: none; padding-top: var(--s3);
+}
+.note.tests > span { color: var(--faint); flex: 1 1 22rem; }
+
+/* ── Ricerca nel contenuto ─────────────────────────────────────────────────── */
+.side-note { color: var(--faint); font-size: var(--fs-2xs); padding: var(--s2) var(--s3); }
+.hit {
+  border-radius: var(--r-md); display: block; padding: var(--s2) var(--s3); text-align: left; width: 100%;
+}
+.hit:hover { background: color-mix(in oklab, var(--fg) 6%, transparent); }
+.hit .who { color: var(--faint); display: flex; font-size: var(--fs-2xs); gap: var(--s2); justify-content: space-between; }
+.hit .what { font-size: var(--fs-sm); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hit .snip {
+  color: var(--muted); display: -webkit-box; font-size: var(--fs-xs); -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2; overflow: hidden;
+}
+
+.side-empty { color: var(--faint); font-size: var(--fs-sm); padding: var(--s4) var(--s3); text-align: center; }
+.side-empty strong { color: var(--muted); display: block; font-weight: 600; margin-bottom: var(--s1); }
+
+/* ── Testata della conversazione ───────────────────────────────────────────── */
+/* Una riga sola, e dentro solo quello che si guarda mentre si lavora: dove si torna, che
+   conversazione è, cosa può fare l'agente, e le due schede. Il resto sta nel menu ⋯. */
+/* La conversazione è una colonna che riempie lo spazio sotto la testata: `#viewport` prende quello
+   che avanza e il campo di scrittura resta in fondo.
+   Questa regola **mancava**, e la conversazione si disegnava per caso: `flex` sui figli non fa
+   niente se il contenitore è un blocco, quindi l'altezza la decideva il contenuto — e con la chat
+   vuota il campo di scrittura misurava zero. Non si vedeva guardando: si vedeva scrivendoci. */
+.session { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; min-width: 0; }
+.session-head {
+  align-items: center; border-bottom: 1px solid var(--line); display: flex; flex: none;
+  gap: var(--s2); padding: var(--s2) var(--s4);
+}
+.session-head .head { flex: 1 1 auto; min-width: 0; }
+.session-head h1 { font-size: var(--fs-base); font-weight: 650; letter-spacing: -0.015em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-head .sub { color: var(--muted); display: flex; font-size: var(--fs-xs); gap: var(--s2); overflow: hidden; }
+.session-head .sub span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Lo stato è una parola e non si taglia; il percorso si accorcia — è già scritto per intero
+   nell'elenco, e su un telefono lo spazio è quello che è. */
+.session-head .sub span:last-child { flex: none; }
+.session-head .chips { display: flex; flex: none; gap: var(--s1); }
+#conv-star { color: var(--faint); }
+#conv-star[aria-pressed="true"] { color: var(--warn); }
+
+/* ── Il modo di autorizzare ────────────────────────────────────────────────── */
+/* Il cuore della milestone. Tre modi — normale, automatico controllato, bypass — più
+   l'esposizione a ChatGPT, che è un asse **diverso**: chi può parlare con la conversazione, non
+   cosa può fare l'agente. Devono distinguersi **senza leggere**, quindi ognuno ha una forma e una
+   tinta, e la stessa tinta vale nella riga dell'elenco, in testata e nel pannello.
+
+   `normale` non ha tinta: è l'assenza di contrassegno, ed è il punto — il default deve sembrare
+   il default. Più privilegio, più segno. */
+
+.mode-btn {
+  align-items: center; border: 1px solid var(--line); border-radius: var(--r-pill);
+  color: var(--muted); display: inline-flex; flex: none; font-family: var(--mono);
+  font-size: var(--fs-2xs); font-weight: 600; gap: 0.35rem; letter-spacing: 0.01em;
+  padding: 0.2rem 0.6rem; white-space: nowrap;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.mode-btn:hover { border-color: var(--line-strong); color: var(--fg); }
+.mode-btn .glyph { flex: none; }
+.mode-btn[data-tone="auto"] { background: var(--auto-soft); border-color: color-mix(in oklab, var(--auto) 32%, transparent); color: var(--auto-ink); }
+.mode-btn[data-tone="auto"]:hover { background: color-mix(in oklab, var(--auto) 18%, var(--surface)); color: var(--auto); }
+.mode-btn[data-tone="other"] { background: var(--other-soft); border-color: var(--other); color: var(--other-ink); font-weight: 700; }
+.mode-btn[data-tone="other"]:hover { background: color-mix(in oklab, var(--other) 18%, var(--surface)); color: var(--other); }
+.mode-btn[data-tone="bypass"] { background: var(--bypass-soft); border-color: var(--bypass); color: var(--bypass); font-weight: 700; }
+.mode-btn[data-tone="bypass"]:hover { background: color-mix(in oklab, var(--bypass) 16%, var(--surface)); color: var(--bypass); }
+/* Il caso peggiore non è «bypass»: è bypass **ed** esposto a un modello remoto. Ha un segno in
+   più, perché sommare due tinte non basta a dire che è un'altra cosa. */
+.mode-btn[data-tone="combined"] { background: var(--bypass); border-color: var(--bypass); color: var(--danger-soft); font-weight: 700; }
+.mode-btn[data-tone="combined"]:hover { background: color-mix(in oklab, var(--bypass) 85%, black); color: var(--danger-soft); }
+/* Il nome per esteso e quello corto convivono nel DOM e li sceglie il foglio: «Automatico
+   controllato» in testata sono 183px, che su un telefono è tutta la testata. Il segno — la tinta
+   e il glifo — resta identico, ed è quello che si riconosce senza leggere. */
+.mode-btn .short { display: none; }
+
+/* La dichiarazione: solo per gli stati che vanno visti per forza. Non è un avviso che si chiude —
+   si toglie cambiando il modo, ed è l'unica cosa che lo toglie. */
+.auth-bar {
+  align-items: center; border-bottom: 1px solid transparent; display: flex; flex-wrap: wrap;
+  font-size: var(--fs-sm); gap: var(--s2) var(--s3); padding: var(--s2) var(--s3);
+}
+.auth-bar[data-tone="bypass"] { background: var(--bypass-bg); border-bottom-color: color-mix(in oklab, var(--bypass) 25%, transparent); color: var(--bypass); }
+.auth-bar[data-tone="combined"] { background: var(--bypass-soft); border-bottom-color: var(--bypass); color: var(--bypass); }
+.auth-bar[data-tone="other"] { background: var(--other-bg); border-bottom-color: color-mix(in oklab, var(--other) 35%, transparent); color: var(--other-ink); }
+.auth-bar .mark { flex: none; }
+.auth-bar .what { flex: 1 1 18rem; min-width: 0; }
+.auth-bar .what b { font-weight: 700; }
+.auth-bar .btn { background: var(--surface); padding: 0.2rem 0.6rem; }
+
+/* ── «Questa conversazione»: dove si decide ────────────────────────────────── */
+.pane-auth { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.auth-body { margin: 0 auto; max-width: var(--page-w); padding: var(--s6) var(--s5) var(--s7); }
+.auth-body > header { margin-bottom: var(--s5); }
+.auth-body h2 { font-size: var(--fs-3xl); font-weight: 700; letter-spacing: -0.028em; line-height: 1.15; text-wrap: balance; }
+.auth-body .who { color: var(--muted); font-size: var(--fs-sm); margin-top: var(--s1); }
+.auth-body .who code { font-family: var(--mono); font-size: 0.95em; }
+
+.auth-group { border-top: 1px solid var(--line); padding-top: var(--s4); margin-top: var(--s5); }
+.auth-group > h3 { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.04em; margin-bottom: var(--s3); text-transform: uppercase; }
+.auth-group > .lead { color: var(--fg-soft); font-size: var(--fs-sm); margin: calc(var(--s3) * -1 + var(--s1)) 0 var(--s3); }
+
+/* Le tre scelte: un gruppo di radio vero, e ognuna dice **cosa comporta** invece di farsi
+   scegliere per nome. La spiegazione sta sotto l'etichetta, dove si legge prima di premere. */
+.auth-choice {
+  align-items: flex-start; border: 1px solid var(--line); border-radius: var(--r-md);
+  cursor: pointer; display: flex; gap: var(--s3); padding: var(--s3) var(--s4);
+  transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.auth-choice + .auth-choice { margin-top: var(--s2); }
+.auth-choice:hover { border-color: var(--line-strong); }
+.auth-choice input { accent-color: var(--accent); flex: none; height: 1.05rem; margin: 0.2rem 0 0; width: 1.05rem; }
+.auth-choice .text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.auth-choice .title { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); font-size: var(--fs-base); font-weight: 600; }
+.auth-choice .title .tag { border-radius: var(--r-xs); font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; padding: 0.05rem 0.35rem; }
+.auth-choice .title .tag.here { background: var(--sunken); color: var(--muted); }
+.auth-choice .title .tag.from { background: var(--auto-soft); color: var(--auto-ink); }
+.auth-choice .why { color: var(--muted); font-size: var(--fs-sm); }
+.auth-choice .accept { color: var(--fg-soft); font-size: var(--fs-sm); margin-top: var(--s1); }
+.auth-choice[data-tone="auto"]:has(input:checked) { background: var(--auto-bg); border-color: color-mix(in oklab, var(--auto) 40%, transparent); }
+.auth-choice[data-tone="bypass"]:has(input:checked) { background: var(--bypass-bg); border-color: var(--bypass); }
+.auth-choice[data-tone="bypass"]:has(input:checked) .accept { color: var(--bypass); }
+.auth-choice:has(input:checked) .title { color: var(--fg); }
+.auth-choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* L'esposizione: una riga con un interruttore, e sotto cosa vuol dire. Non ha la forma di una
+   scelta di modo, perché non lo è. */
+.auth-reach { align-items: flex-start; border: 1px solid var(--line); border-radius: var(--r-md); display: flex; gap: var(--s3); padding: var(--s3) var(--s4); }
+.auth-reach .text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.auth-reach .title { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); font-size: var(--fs-base); font-weight: 600; }
+.auth-reach .why { color: var(--muted); font-size: var(--fs-sm); }
+.auth-reach[data-on="true"] { background: var(--reach-soft); border-color: var(--accent-line); }
+.auth-reach[data-expired="true"] { background: var(--auto-soft); border-color: color-mix(in oklab, var(--auto) 40%, transparent); }
+.auth-reach .switch-btn { flex: none; margin-left: auto; }
+
+/* Una modalità che questa schermata non offre e non sa descrivere: si dice, e non si sceglie
+   niente al posto suo. */
+.auth-other {
+  align-items: flex-start; background: var(--other-bg); border: 1px solid var(--other);
+  border-radius: var(--r-md); display: flex; gap: var(--s3); margin-bottom: var(--s3); padding: var(--s3) var(--s4);
+}
+.auth-other > svg { color: var(--other); flex: none; margin-top: 2px; }
+.auth-other .text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.auth-other .title { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); font-size: var(--fs-base); font-weight: 600; }
+.auth-other .title .tag { background: var(--other-soft); border-radius: var(--r-xs); color: var(--other-ink); font-family: var(--mono); font-size: var(--fs-2xs); font-weight: 600; padding: 0.05rem 0.35rem; }
+.auth-other .why { color: var(--fg-soft); font-size: var(--fs-sm); }
+.auth-other .why.accept { color: var(--other-ink); margin-top: var(--s1); }
+
+.auth-note { color: var(--muted); font-size: var(--fs-sm); }
+.auth-note.danger { color: var(--bypass); }
+.auth-foot { border-top: 1px solid var(--line); margin-top: var(--s5); padding-top: var(--s4); }
+.auth-foot .note { color: var(--faint); font-size: var(--fs-xs); }
+.auth-foot .note + .note { margin-top: var(--s2); }
+.auth-foot code { background: var(--sunken); border-radius: var(--r-xs); font-family: var(--mono); font-size: 0.9em; padding: 0.1em 0.32em; }
+
+/* ── Avvisi di stato ───────────────────────────────────────────────────────── */
+.banner {
+  align-items: center; background: var(--warn-soft); border-bottom: 1px solid var(--line);
+  color: var(--warn); display: flex; font-size: var(--fs-sm); gap: var(--s2);
+  padding: var(--s2) var(--s3);
+}
+.banner.danger { background: var(--danger-soft); color: var(--danger); }
+.banner.info { background: var(--accent-soft); color: var(--accent); }
+.banner .grow { flex: 1 1 auto; }
+.banner .btn { padding: 0.25rem 0.6rem; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Conversazione ─────────────────────────────────────────────────────────── */
+.pane-chat { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+.viewport { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.feed { list-style: none; margin: 0 auto; max-width: var(--measure); padding: var(--s5) var(--s4) var(--s2); }
+
+.turn { display: grid; gap: var(--s3); grid-template-columns: 1.75rem 1fr; margin-bottom: var(--s5); }
+.turn .avatar {
+  align-items: center; border-radius: var(--r-sm); display: grid; height: 1.75rem;
+  place-items: center; width: 1.75rem;
+}
+.turn.user .avatar { background: var(--accent-soft); color: var(--accent); }
+.turn.assistant .avatar { background: var(--sunken); color: var(--fg-soft); }
+.turn .body { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.turn .byline { align-items: center; color: var(--faint); display: flex; font-size: var(--fs-2xs); gap: var(--s2); margin-bottom: var(--s1); }
+/* Chi ha scritto cosa si vede **prima** di leggerlo: quello che scrivi tu è una nota a margine,
+   a destra; quello che risponde l'agente è la pagina, a sinistra. Prima erano due colonne uguali
+   con due avatar uguali, e per sapere chi parlava bisognava leggere la riga piccola in alto. */
+/* Il turno di chi scrive non ha bisogno di un'icona che dica che è suo: lo dice la posizione, e
+   l'icona lasciata a sinistra con il fumetto a destra erano due cose che si guardavano per capire
+   una cosa sola. */
+.turn.user { grid-template-columns: minmax(0, 1fr); }
+.turn.user .avatar { display: none; }
+.turn.user .body { align-items: flex-end; }
+.turn.user .byline { justify-content: flex-end; }
+.turn.user .text {
+  align-self: flex-end; background: var(--accent-soft); border-radius: var(--r-lg);
+  border-top-right-radius: var(--r-sm); max-width: 46ch; padding: var(--s3) var(--s4);
+  width: fit-content;
+}
+.turn.user .text p { margin: 0; }
+.turn.assistant .text { max-width: 100%; padding-right: var(--s2); }
+
+.feed-empty { color: var(--muted); margin: 0 auto; max-width: var(--measure); padding: var(--s7) var(--s4); text-align: center; }
+.feed-empty .mark { background: var(--accent-soft); border-radius: var(--r-lg); color: var(--accent); display: inline-grid; height: 3rem; place-items: center; width: 3rem; }
+.feed-empty h2 { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.015em; margin: var(--s4) 0 var(--s2); text-wrap: balance; }
+.feed-empty p { color: var(--muted); font-size: var(--fs-base); margin: 0 auto; max-width: 28rem; }
+.feed-empty dl { color: var(--muted); display: grid; font-size: var(--fs-sm); gap: var(--s3); margin: var(--s5) auto 0; max-width: 26rem; text-align: left; }
+.feed-empty dt { align-items: center; color: var(--fg); display: flex; font-weight: 600; gap: var(--s2); margin-bottom: 0.15rem; }
+.feed-empty dd { margin: 0; }
+
+.working { align-items: center; color: var(--muted); display: flex; font-size: var(--fs-sm); gap: var(--s2); min-width: 0; }
+.working .what {
+  color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.working .time { color: var(--faint); flex: none; font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.working .dots span {
+  animation: blink 1.2s var(--ease) infinite; background: currentColor; border-radius: 50%;
+  display: inline-block; height: 0.28rem; margin-right: 0.18rem; width: 0.28rem;
+}
+.working .dots span:nth-child(2) { animation-delay: 0.15s; }
+.working .dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes blink { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+
+/* ── Markdown ──────────────────────────────────────────────────────────────── */
+.md { font-size: var(--fs-base); }
+.md > * + * { margin-top: var(--s3); }
+.md p { white-space: pre-wrap; word-break: break-word; }
+.md h1, .md h2, .md h3, .md h4 { font-size: var(--fs-lg); font-weight: 650; letter-spacing: -0.01em; }
+.md h3, .md h4 { font-size: var(--fs-base); }
+.md ul, .md ol { padding-left: 1.3rem; }
+.md li { margin: var(--s1) 0; }
+.md li::marker { color: var(--faint); }
+.md blockquote { border-left: 2px solid var(--line-strong); color: var(--muted); padding-left: var(--s3); }
+.md hr { border: 0; border-top: 1px solid var(--line); }
+.md a { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-line); text-underline-offset: 2px; }
+.md a:hover { text-decoration-color: currentColor; }
+.md code { background: var(--sunken); border-radius: 4px; font-family: var(--mono); font-size: 0.86em; padding: 0.1em 0.32em; }
+/* Una tabella: il contenitore scorre da solo, così una tabella a quattro colonne non si porta
+   dietro la conversazione su un telefono. Gli agenti le scrivono di continuo per confrontare due
+   cose, e senza il blocco `table` nel parser erano una parete di `|` da leggere a occhio. */
+.md .table-wrap { border: 1px solid var(--line); border-radius: var(--r-md); overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: var(--fs-sm); min-width: 100%; }
+.md th, .md td { border-bottom: 1px solid var(--line); padding: var(--s2) var(--s3); text-align: left; vertical-align: top; }
+.md tr:last-child th, .md tr:last-child td { border-bottom: 0; }
+.md th { background: var(--sunken); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.md tbody tr:hover { background: color-mix(in oklab, var(--fg) 3%, transparent); }
+
+/* ── Codice ────────────────────────────────────────────────────────────────── */
+.code { background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.code > header {
+  align-items: center; border-bottom: 1px solid var(--line); color: var(--muted);
+  display: flex; font-family: var(--mono); font-size: var(--fs-2xs); gap: var(--s2);
+  padding: 0.25rem 0.3rem 0.25rem var(--s3);
+}
+.code > header .grow { flex: 1 1 auto; }
+.code pre { margin: 0; overflow-x: auto; padding: var(--s3); }
+.code code { font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.55; white-space: pre; }
+
+/* diff: righe colorate, numeri quando il transcript li dà */
+.diff { font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.55; overflow-x: auto; }
+.diff .hunk { color: var(--faint); font-size: var(--fs-2xs); padding: var(--s1) var(--s3); }
+.diff .line { display: flex; padding: 0 var(--s3); white-space: pre; }
+.diff .line .sign { color: var(--faint); flex: none; width: 1ch; }
+.diff .line.add { background: color-mix(in oklab, var(--ok) 14%, transparent); }
+.diff .line.add .sign { color: var(--ok); }
+.diff .line.del { background: color-mix(in oklab, var(--danger) 14%, transparent); }
+.diff .line.del .sign { color: var(--danger); }
+.diff .stat { color: var(--muted); font-family: var(--ui); font-size: var(--fs-2xs); padding: var(--s1) var(--s3); }
+.diff .stat b { color: var(--ok); }
+.diff .stat i { color: var(--danger); font-style: normal; }
+
+/* ── Scheda di uno strumento ───────────────────────────────────────────────── */
+.tool {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  overflow: hidden; transition: border-color var(--fast) var(--ease);
+}
+.tool:hover { border-color: var(--line-strong); }
+.tool[data-status="error"] { border-color: color-mix(in oklab, var(--danger) 40%, var(--line)); }
+.tool > summary {
+  align-items: center; cursor: pointer; display: flex; gap: var(--s2);
+  list-style: none; padding: var(--s2) var(--s3);
+}
+.tool > summary::-webkit-details-marker { display: none; }
+.tool > summary .chev { color: var(--faint); transition: transform var(--fast) var(--ease); }
+.tool[open] > summary .chev { transform: rotate(90deg); }
+.tool .tool-icon { color: var(--muted); }
+.tool .label { font-family: var(--mono); font-size: var(--fs-xs); font-weight: 600; }
+.tool .what {
+  color: var(--muted); flex: 1 1 auto; font-family: var(--mono); font-size: var(--fs-xs);
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tool .detail { border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); }
+.tool .detail .cap { color: var(--faint); font-size: var(--fs-2xs); letter-spacing: 0.05em; text-transform: uppercase; }
+.tool .detail pre {
+  background: var(--sunken); border-radius: var(--r-sm); font-family: var(--mono);
+  font-size: var(--fs-xs); line-height: 1.55; margin: 0; max-height: 22rem; overflow: auto;
+  padding: var(--s2) var(--s3); white-space: pre-wrap; word-break: break-word;
+}
+.tool .detail pre.error { color: var(--danger); }
+.tool .note { color: var(--faint); font-size: var(--fs-2xs); }
+
+/* Gli strumenti consecutivi, raggruppati: una riga sola al posto di cinque schede. Il gruppo è
+   **incassato** rispetto alla risposta — fondo appena diverso, nessun bordo attorno alle schede
+   dentro — perché quello che si legge è la risposta, e questo è quello che l'agente ha fatto per
+   scriverla. */
+.tools {
+  background: color-mix(in oklab, var(--fg) 2.5%, transparent); border-radius: var(--r-md);
+}
+.tools > summary {
+  align-items: center; cursor: pointer; display: flex; flex-wrap: wrap; gap: var(--s2);
+  list-style: none; min-height: 2rem; padding: var(--s2) var(--s3);
+}
+.tools > summary::-webkit-details-marker { display: none; }
+.tools > summary .chev { color: var(--faint); transition: transform var(--fast) var(--ease); }
+.tools[open] > summary .chev { transform: rotate(90deg); }
+.tools .label { font-size: var(--fs-xs); font-weight: 600; }
+.tools[data-state="error"] > summary .label { color: var(--danger); }
+.tools .detail { display: flex; flex-direction: column; gap: var(--s1); padding: 0 var(--s2) var(--s2); }
+.tools .detail .tool { background: var(--bg); }
+.tools .detail .tool + .tool { margin-top: 0; }
+
+.thinking { color: var(--muted); }
+.thinking > summary { align-items: center; cursor: pointer; display: flex; font-size: var(--fs-xs); gap: var(--s2); list-style: none; }
+.thinking > summary::-webkit-details-marker { display: none; }
+.thinking > summary .chev { transition: transform var(--fast) var(--ease); }
+.thinking[open] > summary .chev { transform: rotate(90deg); }
+.thinking .md { border-left: 2px solid var(--line); font-size: var(--fs-sm); margin-top: var(--s2); padding-left: var(--s3); }
+
+/* ── Approvazioni ──────────────────────────────────────────────────────────── */
+.approvals { display: flex; flex-direction: column; gap: var(--s2); margin: 0 auto; max-width: var(--measure); padding: 0 var(--s4); width: 100%; }
+.approvals:not(:empty) { padding-bottom: var(--s2); }
+.ask { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r-md); box-shadow: var(--shadow-2); overflow: hidden; }
+.ask > header { align-items: center; background: var(--warn-soft); display: flex; gap: var(--s2); padding: var(--s2) var(--s3); }
+.ask > header strong { font-size: var(--fs-sm); }
+.ask > header .tool-name { font-family: var(--mono); }
+.ask > header .where { color: var(--warn); font-size: var(--fs-2xs); margin-left: auto; }
+.ask .body { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); }
+.ask.sensitive { border-color: var(--danger); }
+.ask.sensitive > header { background: var(--danger-soft); }
+.ask.sensitive > header .where { color: var(--danger); }
+.ask .warning { align-items: flex-start; color: var(--danger); display: flex; font-size: var(--fs-xs); gap: var(--s2); }
+.ask .cmd {
+  background: var(--sunken); border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-sm);
+  line-height: 1.55; max-height: 9rem; overflow: auto; padding: var(--s2) var(--s3);
+  white-space: pre-wrap; word-break: break-word;
+}
+.ask .actions { display: flex; gap: var(--s2); }
+.ask .actions button { flex: 1 1 8rem; }
+.ask .expiry { color: var(--faint); font-size: var(--fs-2xs); }
+
+/* ── Scrittura ─────────────────────────────────────────────────────────────── */
+.composer-wrap {
+  background: linear-gradient(to top, var(--bg) 70%, transparent);
+  padding: var(--s2) var(--s4) calc(var(--s3) + env(safe-area-inset-bottom, 0px));
+}
+.composer {
+  align-items: flex-end; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl); display: flex; gap: var(--s2); margin: 0 auto; max-width: var(--measure);
+  padding: var(--s2) var(--s2) var(--s2) var(--s3); transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.composer:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.composer textarea {
+  background: none; border: 0; flex: 1 1 auto; line-height: 1.5; max-height: 40vh;
+  min-height: 1.6rem; outline: none; padding: 0.35rem 0; resize: none;
+}
+.composer textarea::placeholder { color: var(--faint); }
+.composer .send { background: var(--accent); border-radius: var(--r-pill); color: var(--accent-fg); height: 2.1rem; width: 2.1rem; display: grid; place-items: center; flex: none; }
+.composer .send:disabled { background: var(--sunken); color: var(--faint); cursor: default; }
+
+/* ── Terminale ─────────────────────────────────────────────────────────────── */
+.pane-term { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; padding: var(--s2) var(--s3) var(--s3); }
+#screen { flex: 1 1 auto; min-height: 0; }
+#screen .xterm { height: 100%; }
+.term-note { color: var(--faint); font-size: var(--fs-2xs); padding: 0 var(--s3) var(--s2); }
+
+/* ── Menu a comparsa e finestre ────────────────────────────────────────────── */
+/* La posizione la decide `ui/anchor.mjs` (`placeAnchored`), che la ragiona sulla geometria
+   dell'ancora e su quella dello schermo: qui resta solo l'aspetto. Il menu è `fixed` — e lo è
+   **prima** di essere misurato, perché un blocco largo quanto la pagina si misura 1440 e finisce
+   incollato al bordo sinistro. Vedi `app.js`, `openMenu`. */
+.menu {
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--shadow-2); max-width: calc(100vw - 1rem); min-width: 14rem;
+  overflow-x: hidden; padding: var(--s1); width: max-content; z-index: var(--z-menu);
+}
+.menu .row {
+  align-items: center; border-radius: var(--r-sm); display: flex; gap: var(--s3);
+  padding: var(--s2) var(--s2); text-align: left; width: 100%;
+}
+.menu .row:hover { background: color-mix(in oklab, var(--fg) 7%, transparent); }
+.menu .row:focus-visible { background: color-mix(in oklab, var(--fg) 9%, transparent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.menu .row .label { flex: 1 1 auto; font-size: var(--fs-md); overflow-wrap: anywhere; }
+.menu .row .hint { color: var(--faint); font-family: var(--mono); font-size: var(--fs-2xs); }
+.menu .row.danger { color: var(--danger); }
+.menu .sep { border-top: 1px solid var(--line); margin: var(--s1) 0; }
+.switch { background: var(--sunken); border-radius: var(--r-pill); flex: none; height: 1.15rem; position: relative; transition: background var(--fast) var(--ease); width: 2rem; }
+.switch::after { background: var(--surface); border-radius: 50%; box-shadow: var(--shadow-1); content: ""; height: 0.85rem; left: 0.15rem; position: absolute; top: 0.15rem; transition: transform var(--fast) var(--ease); width: 0.85rem; }
+.row[aria-checked="true"] .switch { background: var(--accent); }
+.row[aria-checked="true"] .switch::after { transform: translateX(0.85rem); }
+/* Una scelta fra poche si disegna come un pallino, non come un interruttore: quattro interruttori
+   spenti non dicono quale sia quello attivo, e una scelta mutuamente esclusiva disegnata come
+   quattro cose indipendenti è una bugia sulla forma. */
+.radio { border: 1.5px solid var(--line-strong); border-radius: 50%; flex: none; height: 1.05rem; position: relative; width: 1.05rem; }
+.row[aria-checked="true"] .radio { border-color: var(--accent); }
+.row[aria-checked="true"] .radio::after { background: var(--accent); border-radius: 50%; content: ""; inset: 0.2rem; position: absolute; }
+
+#scrim { background: oklch(0% 0 0 / 45%); inset: 0; position: fixed; z-index: var(--z-scrim); }
+.dialog-backdrop { background: oklch(0% 0 0 / 45%); display: grid; inset: 0; place-items: center; padding: var(--s4); position: fixed; z-index: var(--z-dialog); }
+.dialog { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-2); max-width: 26rem; padding: var(--s5); width: 100%; }
+.dialog h2 { font-size: var(--fs-lg); font-weight: 650; }
+.dialog p { color: var(--muted); font-size: var(--fs-sm); margin-top: var(--s2); }
+.dialog .field { margin-top: var(--s4); }
+.dialog .actions { display: flex; gap: var(--s2); justify-content: flex-end; margin-top: var(--s5); }
+
+/* Un avviso è una **notifica**, non un bersaglio: non deve mai mangiarsi un clic. Non è teoria —
+   stava sopra la barra delle azioni della selezione (z-index 60 contro 40) e con le stesse
+   coordinate, e per cinque secondi dopo un'azione in blocco i pulsanti della barra non
+   rispondevano. Il difetto era invisibile: il clic arrivava, cadeva sull'avviso, e l'unica traccia
+   era un dialogo che non si apriva. */
+#toast {
+  background: var(--fg); border-radius: var(--r-pill); bottom: calc(var(--s5) + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-2); color: var(--bg); font-size: var(--fs-sm); left: 50%;
+  max-width: min(32rem, calc(100vw - 2rem)); padding: var(--s2) var(--s4); pointer-events: none;
+  position: fixed; text-align: center; transform: translateX(-50%); z-index: var(--z-toast);
+}
+/* E quando c'è la barra delle azioni, l'avviso le sta sopra invece che dentro: due cose che dicono
+   cose diverse non devono occupare lo stesso posto. */
+:root:has(#selectbar:not([hidden])) #toast { bottom: calc(var(--s4) + 3.5rem + env(safe-area-inset-bottom, 0px)); }
+#toast.danger { background: var(--danger); color: oklch(99% 0 0); }
+
+/* ── Token personale ───────────────────────────────────────────────────────── */
+.gate {
+  align-items: center; background: color-mix(in oklab, var(--bg) 92%, transparent);
+  backdrop-filter: blur(6px); display: grid; inset: 0; padding: var(--s4); place-items: center;
+  position: fixed; z-index: var(--z-gate);
+}
+.gate form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-2); display: flex; flex-direction: column; gap: var(--s3); padding: var(--s6) var(--s5); width: min(24rem, 100%); }
+.gate .brand { justify-content: center; }
+.gate h1 { font-size: var(--fs-lg); letter-spacing: -0.01em; margin: 0; text-align: center; }
+.gate p { color: var(--muted); font-size: var(--fs-sm); text-align: center; }
+.gate code { background: var(--sunken); border-radius: 4px; font-family: var(--mono); font-size: 0.85em; padding: 0.1em 0.3em; }
+.gate input { background: var(--bg); border: 1px solid var(--line-strong); border-radius: var(--r-md); font-family: var(--mono); padding: var(--s2) var(--s3); text-align: center; }
+.gate input:focus { border-color: var(--accent); outline: none; }
+.err { color: var(--danger); font-size: var(--fs-xs); min-height: 1em; text-align: center; }
+
+/* ── Scegliere più conversazioni ───────────────────────────────────────────── */
+/* La barra delle azioni **galleggia** sopra il contenuto invece di stare in fondo a una colonna:
+   con l'elenco che è una pagina intera, una barra in fondo sarebbe fuori dallo schermo proprio
+   quando serve. */
+.selectbar {
+  align-items: center; background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: var(--r-xl); bottom: var(--s4); box-shadow: var(--shadow-2);
+  display: flex; flex-wrap: wrap; gap: var(--s2); left: 50%; padding: var(--s2) var(--s3);
+  position: fixed; transform: translateX(-50%); z-index: var(--z-menu);
+  max-width: min(46rem, calc(100vw - 2 * var(--s3)));
+}
+.selectbar .bar-head { align-items: center; display: flex; font-size: var(--fs-sm); gap: var(--s2); }
+.selectbar .bar-head strong { font-size: var(--fs-sm); }
+.selectbar .bar-head .grow { flex: 1 1 auto; }
+.selectbar .bar-acts { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.selectbar .act {
+  align-items: center; border: 1px solid var(--line); border-radius: var(--r-md);
+  color: var(--fg-soft); display: inline-flex; font-size: var(--fs-xs); gap: var(--s1);
+  min-height: 2rem; padding: 0 var(--s2);
+}
+.selectbar .act:hover { background: var(--raised); border-color: var(--line-strong); color: var(--fg); }
+.selectbar .act.danger { color: var(--danger); }
+.pick, .pick-all {
+  background: var(--surface); border: 1.5px solid var(--line-strong); border-radius: 5px;
+  color: var(--accent-fg); display: grid; flex: none; height: 1.05rem; place-items: center;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease);
+  width: 1.05rem;
+}
+.pick[aria-checked="true"], .pick-all[aria-checked="true"], .pick-all[aria-checked="mixed"] {
+  background: var(--accent); border-color: var(--accent);
+}
+.pick-all[aria-checked="mixed"] { background: var(--accent-soft); border-color: var(--accent-line); }
+.list .row[aria-selected="true"] { background: var(--accent-soft); }
+.list .row[aria-selected="true"] .title { font-weight: 600; }
+
+/* ── Il pannello: stato, accesso, copie, impostazioni ──────────────────────── */
+/* Non è una dashboard di riquadri decorativi: è una pagina che si legge dall'alto in basso, con
+   le cose che si premono **dentro** il riquadro a cui appartengono. */
+.pane-admin { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.admin-body { margin: 0 auto; max-width: var(--page-w); padding: var(--s6) var(--s5) var(--s7); }
+/* Una griglia: navigazione secondaria a sinistra, **ferma**, e una sezione per volta a destra.
+   Prima era una fila di schede sopra il contenuto: quattro sezioni impilate in una colonna sola,
+   che scorrevano via insieme a quello che stavi leggendo. */
+.admin-grid { align-items: start; display: grid; gap: var(--s6); grid-template-columns: 12.5rem minmax(0, 1fr); }
+.admin-rail {
+  display: flex; flex-direction: column; gap: 2px; position: sticky;
+  top: 0;
+}
+.admin-tab {
+  align-items: center; border-radius: var(--r-md); color: var(--muted); display: flex;
+  font-size: var(--fs-sm); gap: var(--s2); min-height: 2.1rem; padding: var(--s2) var(--s3);
+  text-align: left; width: 100%;
+}
+.admin-tab:hover { background: var(--raised); color: var(--fg); }
+.admin-tab[aria-selected="true"] { background: var(--surface); border: 1px solid var(--line); color: var(--fg); font-weight: 600; }
+/* La colonna di lettura è **una**: prima il titolo stava a 520px, la tabella a 1060 e le schede a
+   1425 — tre misure diverse nella stessa schermata. */
+.admin-panel { display: flex; flex-direction: column; gap: var(--s3); max-width: var(--measure-wide); min-width: 0; }
+.admin-state { display: flex; flex-wrap: wrap; gap: var(--s2); }
+
+.admin-section { display: flex; flex-direction: column; gap: var(--s5); }
+.block { display: flex; flex-direction: column; gap: var(--s3); }
+.block > h3 {
+  border-bottom: 1px solid var(--line); font-size: var(--fs-lg); font-weight: 650;
+  letter-spacing: -0.01em; padding-bottom: var(--s2);
+}
+.block > h3 + .note { margin-top: calc(var(--s3) * -1 + var(--s2)); }
+.note { color: var(--muted); font-size: var(--fs-sm); max-width: var(--measure); }
+/* L'enfasi dentro una nota è **più scura**, non solo più spessa: su un testo già grigio il grassetto
+   da solo si vede appena. */
+.note strong { color: var(--fg-soft); font-weight: 600; }
+.note code { background: var(--sunken); border-radius: 4px; font-family: var(--mono); font-size: 0.86em; padding: 0.1em 0.32em; }
+.note.danger { color: var(--danger); }
+.note.foot { border-top: 1px solid var(--line); color: var(--faint); font-size: var(--fs-2xs); margin-top: var(--s4); padding-top: var(--s3); }
+.note.leggo { color: var(--faint); }
+
+/* Quello che serve sapere una volta sola sta **chiuso**, e si apre quando lo si cerca. Non è testo
+   tolto: è testo spostato. Un paragrafo di spiegazione davanti a ogni visita è una tassa su chi
+   passa di qui tutti i giorni. */
+.perche { border-top: 1px solid var(--line); padding-top: var(--s2); }
+.perche > summary {
+  align-items: center; color: var(--muted); cursor: pointer; display: flex; font-size: var(--fs-sm);
+  gap: var(--s1); min-height: 1.9rem; width: fit-content;
+}
+.perche > summary:hover { color: var(--fg); }
+.perche > summary::-webkit-details-marker { display: none; }
+.perche > summary .chev { flex: none; transition: transform var(--fast) var(--ease); }
+.perche[open] > summary { color: var(--fg); font-weight: 600; }
+.perche[open] > summary .chev { transform: rotate(90deg); }
+.perche .spiega { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) 0 var(--s1) 1.25rem; }
+
+/* I pulsanti di un blocco vanno a capo insieme, dentro il blocco: prima uscivano dalla piega a
+   1440×900 e sparivano sotto il bordo dello schermo. */
+.btn-row { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); }
+.btn-row .note { flex: 1 1 100%; }
+
+/* I due modi di entrare, affiancati quando c'è spazio: sono due alternative, e vederle insieme è
+   quello che le rende confrontabili. */
+.mode-grid { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); }
+.mode {
+  border: 1px solid var(--line); border-radius: var(--r-md); display: flex; flex-direction: column;
+  gap: var(--s3); padding: var(--s4);
+}
+.mode h4 { font-size: var(--fs-base); font-weight: 650; }
+/* Un campo è largo quanto il dato che contiene — un hostname di 25 caratteri — non quanto la
+   scheda: un campo da 1000px per un hostname è spazio che non dice niente. */
+.field-row { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.field-row .field { flex: 0 1 22rem; }
+
+/* Un campo con la sua etichetta e la sua riga di spiegazione, quando i campi sono più d'uno nello
+   stesso blocco: due caselle vuote una sotto l'altra senza intestazione sono due indovinelli. */
+.field-block { display: flex; flex-direction: column; gap: var(--s2); }
+.cap { color: var(--faint); font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.help { color: var(--faint); font-size: var(--fs-xs); max-width: var(--measure); }
+
+/* Il registro dello stato: una riga per fatto, e ogni riga dice **cosa vuol dire** il numero
+   accanto. Prima erano sei riquadri uguali in griglia 3×2, con il numero grande e l'etichetta
+   piccola sotto: il modello «dashboard a numeri», che non distingue un valore buono da uno
+   preoccupante e non si accorda nemmeno grammaticalmente («1 processi accesi»). */
+.ledger { border-top: 1px solid var(--line); display: flex; flex-direction: column; }
+.ledger-row {
+  align-items: baseline; border-bottom: 1px solid var(--line); display: grid; gap: var(--s1) var(--s3);
+  grid-template-columns: minmax(9rem, 14rem) minmax(4rem, auto) 1fr;
+  padding: var(--s2) 0;
+}
+.ledger-row .what { color: var(--fg-soft); font-size: var(--fs-sm); }
+.ledger-row .value {
+  color: var(--fg); font-family: var(--mono); font-size: var(--fs-md); font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ledger-row .hint { color: var(--muted); font-size: var(--fs-xs); }
+
+.checks, .paths, .procs, .backups, .steps { display: flex; flex-direction: column; gap: var(--s1); list-style: none; }
+.checks .check { align-items: baseline; display: flex; gap: var(--s2); padding: var(--s1) 0; }
+.checks .check svg { color: var(--ok); flex: none; }
+.checks .check[data-ok="false"] svg { color: var(--danger); }
+.checks .check .what { flex: none; font-size: var(--fs-sm); font-weight: 600; min-width: 9rem; }
+.checks .check .detail { color: var(--muted); font-size: var(--fs-xs); min-width: 0; overflow-wrap: anywhere; }
+
+.steps .step { align-items: flex-start; display: flex; gap: var(--s2); }
+.steps .step svg { color: var(--danger); flex: none; margin-top: 2px; }
+.steps .step[data-ok="true"] svg { color: var(--ok); }
+.steps .step strong { display: block; font-size: var(--fs-sm); }
+.steps .step .detail { color: var(--muted); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+
+.paths li { align-items: baseline; display: flex; flex-wrap: wrap; gap: var(--s2); }
+.paths .what { color: var(--muted); flex: none; font-size: var(--fs-xs); min-width: 9rem; }
+.paths code { color: var(--fg-soft); font-family: var(--mono); font-size: var(--fs-2xs); overflow-wrap: anywhere; }
+
+.proc-group { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s2); }
+.proc-group h4 { color: var(--fg-soft); font-size: var(--fs-xs); font-weight: 600; }
+.procs .proc { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); padding: var(--s1) 0; }
+.procs .pid { color: var(--muted); font-family: var(--mono); font-size: var(--fs-2xs); min-width: 3.5rem; }
+.procs .name { font-size: var(--fs-sm); font-weight: 600; }
+.procs .why { color: var(--faint); flex: 1 1 12rem; font-size: var(--fs-2xs); }
+.procs .btn { padding: 0.2rem 0.6rem; }
+
+.backups .backup { border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3) 0; }
+.backups .backup:first-child { border-top: 0; }
+.backups .who { align-items: center; display: flex; flex-wrap: wrap; gap: var(--s2); }
+.backups .who strong { font-size: var(--fs-sm); }
+.backups .who .detail { color: var(--muted); font-size: var(--fs-2xs); }
+
+/* L'anteprima di un'importazione: una riga per conversazione, con la sua casella. La casella è
+   grande abbastanza per un dito, e tutta la riga è cliccabile — un bersaglio da 13px accanto a un
+   nome lungo è un bersaglio che si manca. */
+.pick-row { align-items: baseline; display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); }
+.pick-row .note { max-width: none; }
+.backups .backup.pick { align-items: baseline; flex-direction: row; flex-wrap: wrap; }
+.backups .backup.pick label.who { cursor: pointer; flex: 1 1 22rem; }
+.pick { align-items: center; display: flex; flex: none; }
+.pick input { accent-color: var(--accent); height: 1.05rem; margin: 0; width: 1.05rem; }
+.pick input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.row { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.grow { flex: 1 1 auto; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
+.chips .chip { align-items: center; display: inline-flex; gap: var(--s1); }
+.chips .icon-btn { height: 1.1rem; width: 1.1rem; }
+.plan { display: flex; flex-direction: column; gap: var(--s2); }
+.plan pre {
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-family: var(--mono); font-size: var(--fs-2xs); overflow-x: auto; padding: var(--s3);
+}
+.todo { display: flex; flex-direction: column; gap: var(--s3); list-style: none; }
+.todo li { display: flex; flex-direction: column; gap: 2px; }
+.todo strong { font-size: var(--fs-sm); }
+.todo code { color: var(--accent); font-family: var(--mono); font-size: var(--fs-2xs); overflow-wrap: anywhere; }
+.todo .detail { color: var(--muted); font-size: var(--fs-2xs); }
+.verify { display: flex; flex-direction: column; gap: var(--s2); margin-top: var(--s3); }
+.verify h4 { align-items: center; display: flex; gap: var(--s2); }
+.verify code { color: var(--fg-soft); font-family: var(--mono); font-size: var(--fs-xs); }
+.log summary { color: var(--muted); cursor: pointer; font-size: var(--fs-xs); }
+.log pre {
+  background: var(--sunken); border: 1px solid var(--line); border-radius: var(--r-sm); font-family: var(--mono);
+  font-size: var(--fs-2xs); max-height: 18rem; overflow: auto; padding: var(--s3); white-space: pre-wrap;
+}
+
+/* ── Pagina: conversazioni ─────────────────────────────────────────────────── */
+/* In cima quello che sta succedendo adesso — poche righe, e solo se c'è — poi l'elenco. La
+   conversazione aperta non è «la prima della lista»: è un fatto a sé, e ha il suo blocco. */
+.now-block { margin-bottom: var(--s5); }
+.home-note { color: var(--muted); font-size: var(--fs-sm); }
+
+/* ── Attività ──────────────────────────────────────────────────────────────── */
+/* Cosa gira **adesso** su questa macchina: un processo per riga, con da quanto va e cosa sta
+   facendo. È la schermata che risponde a «posso chiudere il portatile?». */
+.activity-row .what { color: var(--fg-soft); flex: 0 1 auto; font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Progetti: riepilogo ───────────────────────────────────────────────────── */
+.stat-row { display: grid; gap: var(--s3); grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
+
+/* ── Schermi stretti ───────────────────────────────────────────────────────── */
+.only-narrow { display: none !important; }
+
+@media (max-width: 60rem) {
+  .only-narrow { display: inline-flex !important; }
+  .only-wide { display: none !important; }
+  .page-body { padding: var(--s4) var(--s3) var(--s6); }
+  .page-head h1 { font-size: var(--fs-2xl); }
+  /* La testata, da telefono, va su **due righe**: il marchio e i comandi sopra, le quattro sezioni
+     sotto. Su una riga sola le sezioni venivano schiacciate a larghezza zero e sparivano — cioè
+     l'unico modo di passare da una pagina all'altra non c'era più. */
+  .nav {
+    flex-wrap: wrap; gap: var(--s2); min-height: 0;
+    padding: var(--s2) var(--s3) var(--s2);
+    padding-top: calc(var(--s2) + env(safe-area-inset-top, 0px));
+  }
+  .nav-tabs { flex-basis: 100%; flex-wrap: wrap; margin-left: 0; order: 10; overflow: visible; }
+  /* Le voci della testata sono navigazione, e su un telefono si toccano col pollice come tutto il
+     resto: a 36px stavano sotto il minimo, e il controllo dei bersagli se n'è accorto.
+     E vanno **a capo** invece di scorrere di lato: l'audit di M9 l'ha misurato — a 390
+     «Amministrazione» finiva a x=396, cioè sei pixel fuori dallo schermo, dietro un bordo che non
+     diceva che c'era altro. Il respiro orizzontale stretto è quello che le fa stare in una riga
+     fino a ~370px. */
+  .nav-tab { min-height: var(--tap); padding: var(--s2); }
+  /* La testata di un telefono non ha spazio per i numeri accanto alle sezioni: la sezione accesa
+     basta a dire dove sei, e il conteggio sta nella pagina che si apre. */
+  .nav-tab .n { display: none; }
+  .nav-search .label { display: none; }
+  /* È un pulsante di navigazione come gli altri, e su un telefono si tocca col pollice: a 32px
+     stava sotto il minimo. */
+  /* Il pulsante della ricerca, da telefono, resta un bersaglio **quadrato**: era largo 33px con
+     l'etichetta nascosta, e un pollice su 33px lo si manca.  lo contava, ed era
+     l'ultimo sotto la soglia. */
+  .nav-search { min-height: var(--tap); min-width: var(--tap); padding: 0 var(--s2); }
+  /* La parola «connesso» accanto al pallino è la prima cosa che si può togliere: il pallino dice
+     la stessa cosa, e il testo resta nel suggerimento per chi lo vuole leggere. */
+  #conn-text { display: none; }
+  .nav-conn { gap: 0; }
+  .feed { padding: var(--s4) var(--s3) var(--s2); }
+  .feed-empty { padding: var(--s6) var(--s3); }
+  .composer-wrap { padding-left: var(--s3); padding-right: var(--s3); }
+  .approvals { padding-left: var(--s3); padding-right: var(--s3); }
+  .turn { grid-template-columns: 1.5rem 1fr; gap: var(--s2); margin-bottom: var(--s4); }
+  .turn .avatar { height: 1.5rem; width: 1.5rem; }
+  .turn.user .text { padding: var(--s2) var(--s3); }
+  /* Bersagli toccabili: sotto i 44px un dito sbaglia, e qui si tocca da un telefono */
+  .icon-btn { height: var(--tap); width: var(--tap); }
+  /* La testata della conversazione va su **due righe**. Su una sola il nome restava 234px su 390
+     — `migra…` — mentre accanto ci stavano il ritorno, il modo, le schede e il menu. Il titolo è
+     l'unica cosa che dice *dove sei*: è l'ultima che si può tagliare, non la prima. */
+  .session-head {
+    display: grid; gap: var(--s1) var(--s2);
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-areas:
+      "back head head more"
+      "tabs tabs auth auth";
+    padding: var(--s2) var(--s3);
+  }
+  .session-head .back { grid-area: back; }
+  .session-head .head { grid-area: head; }
+  .session-head .tabs-seg { grid-area: tabs; justify-self: start; }
+  #conv-auth { grid-area: auth; justify-self: end; }
+  #conv-menu-btn { grid-area: more; }
+  .session-head .grow { display: none; }
+  /* La stella sta anche nel menu ⋯, quindi qui non serve una riga sua: lo spazio è quello che è, e
+     la stessa azione resta raggiungibile. */
+  #conv-star { display: none; }
+  .mode-btn .long { display: none; }
+  .mode-btn .short { display: inline; }
+  .mode-btn { padding: 0.2rem 0.5rem; }
+  /* Su un telefono lo spazio della testata è poco: il titolo serve, il chip "sta lavorando" no —
+     la stessa cosa la dice la riga nella conversazione, e lì si vede meglio. E il suggerimento su
+     Invio/Shift non ha senso con una tastiera a schermo. */
+  #busy { display: none !important; }
+  /* Con un dito non c'è «passa sopra»: quello che serve deve essere già lì. */
+  .list .row { padding: var(--s2) var(--s3); }
+  .list .row .menu-btn { opacity: 1; height: var(--tap); width: var(--tap); }
+  .list .row .where { max-width: 8rem; }
+  .field input { min-height: var(--tap); }
+  .field .icon-btn { height: var(--tap); width: var(--tap); }
+  .seg button { min-height: var(--tap); padding-left: var(--s3); padding-right: var(--s3); }
+  .menu .row { min-height: var(--tap); padding: var(--s3) var(--s2); }
+  .composer .send { height: var(--tap); width: var(--tap); }
+  .composer-hint { display: none; }
+  .selectbar { bottom: calc(var(--s2) + env(safe-area-inset-bottom, 0px)); left: var(--s2); right: var(--s2); transform: none; max-width: none; }
+  .selectbar .act { min-height: var(--tap); }
+  button.brand { min-height: var(--tap); }
+  /* Il pannello, da un telefono: la navigazione secondaria va **sopra** il contenuto e va a capo —
+     a sinistra non c'è spazio, e una fila che scorre di lato nasconde le ultime sezioni dietro un
+     bordo che non dice che c'è altro. L'audit di M9 l'aveva misurato: a 390 «Impostazioni» cominciava
+     a x=320 e finiva a 420, cioè fuori dallo schermo. */
+  .admin-body { padding: var(--s3) var(--s3) var(--s6); }
+  .admin-grid { gap: var(--s4); grid-template-columns: minmax(0, 1fr); }
+  .admin-rail { flex-direction: row; flex-wrap: wrap; gap: 2px; position: static; }
+  .admin-tab { min-height: var(--tap); padding-left: var(--s3); padding-right: var(--s3); width: auto; }
+  .admin-tab svg { display: none; }
+  .checks .check { flex-direction: column; gap: 2px; }
+  .checks .check .what { min-width: 0; }
+  .paths .what { min-width: 0; }
+  .block .btn, .backups .btn, .mode .btn, .btn { min-height: var(--tap); }
+  /* E i due comandi che sono testo e basta — «mostrale», «dimentica…» — su un telefono non possono
+     restare alti 19px: sono la sola via per rivedere o togliere le voci di prova. */
+  .link-btn { align-items: center; display: inline-flex; min-height: var(--tap); }
+  /* Un «perché…» è un controllo che si preme: 30px sono sotto il pollice. */
+  .perche > summary { min-height: var(--tap); }
+  /* Le finestre di conferma: sono la cosa che si preme quando si sta decidendo qualcosa, e da un
+     telefono a 36px si sbaglia bersaglio. */
+  .dialog .actions .btn { min-height: var(--tap); }
+  .procs .btn { min-height: var(--tap); }
+  /* Il «togli» dentro un'etichetta delle cartelle: da un telefono deve essere un bersaglio vero. */
+  .chips .icon-btn { height: var(--tap); width: var(--tap); }
+  .chips .chip { padding-right: 0; }
+  /* Il registro, da telefono: il valore va sotto il nome invece che a fianco, altrimenti la colonna
+     del «cosa vuol dire» resta larga zero. */
+  .ledger-row { grid-template-columns: 1fr auto; }
+  .ledger-row .hint { grid-column: 1 / -1; }
+  /* La casella della riga è un segno dentro un pulsante alto 44px: può restare piccola. */
+  .pick { height: 1.25rem; width: 1.25rem; }
+  .code > header { padding-left: var(--s2); }
+  .code pre { padding: var(--s2); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+  .viewport { scroll-behavior: auto; }
+}
+
+/* Con il contrasto forzato di sistema, i bordi devono esserci davvero */
+@media (prefers-contrast: more) {
+  :root { --line: var(--line-strong); }
+  .tool, .ask, .code, .composer { border-width: 2px; }
+}

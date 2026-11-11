@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'release/**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      # node-pty needs to build; on Windows the toolchain is already there, on Linux it needs
+      # a compiler plus make and python.
+      - name: Build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y build-essential python3
+      - name: Build the React UI
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+      - name: Unit and end-to-end tests
+        run: node --test
+      - name: Contrast of both themes
+        run: node tools/check-contrast.mjs
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+      - name: CLI smoke (help, status on a stopped server)
+        shell: bash
+        run: |
+          node src/cli/index.mjs help
+          node src/cli/index.mjs status || true
+        env:
+          CR_TOKEN: token-di-prova-lungo-abbastanza
